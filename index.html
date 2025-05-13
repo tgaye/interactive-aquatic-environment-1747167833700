@@ -1,0 +1,418 @@
+<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Aquatic Environment</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: Arial, sans-serif;
+        }
+        #canvas-container {
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: center;
+            position: relative;
+        }
+        #info {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            pointer-events: none;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.8.0/lib/p5.js"></script>
+
+<base target="_self">
+
+
+    </head><body><div id="canvas-container"></div>
+    <div id="info">Click to toggle day/night</div>
+    
+    <script>
+        const sketch = function(p) {
+            // Fish and environment variables
+            let fishes = [];
+            let bubbles = [];
+            let isDay = true;
+            let bgGradient;
+            let waterSurface;
+            let lastClickTime = 0;
+            const maxFishes = 30;
+            const maxBubbles = 100;
+            
+            // Color palettes
+            const dayColors = {
+                waterTop: p.color(30, 120, 200, 150),
+                waterBottom: p.color(10, 60, 120, 200),
+                fishColors: [
+                    p.color(255, 100, 50),
+                    p.color(50, 200, 255),
+                    p.color(255, 200, 50),
+                    p.color(200, 50, 255)
+                ]
+            };
+            
+            const nightColors = {
+                waterTop: p.color(10, 30, 80, 150),
+                waterBottom: p.color(5, 15, 40, 200),
+                fishColors: [
+                    p.color(255, 80, 30, 200),
+                    p.color(30, 180, 255, 200),
+                    p.color(255, 180, 30, 200),
+                    p.color(180, 30, 255, 200)
+                ]
+            };
+            
+            p.setup = function() {
+                let canvas = p.createCanvas(p.windowWidth * 0.9, p.windowHeight * 0.9);
+                canvas.parent('canvas-container');
+                p.colorMode(p.HSB, 360, 100, 100, 1);
+                
+                // Create water surface effect
+                waterSurface = p.createGraphics(p.width, p.height);
+                
+                // Initialize fish
+                for (let i = 0; i < maxFishes / 3; i++) {
+                    createFish(p.random(p.width), p.random(p.height), p.random([0, 1, 2]));
+                }
+                
+                // Create initial bubbles
+                for (let i = 0; i < maxBubbles / 2; i++) {
+                    createBubble();
+                }
+            };
+            
+            p.draw = function() {
+                // Update background based on day/night
+                updateBackground();
+                
+                // Draw water surface effect
+                drawWaterSurface();
+                
+                // Update and draw bubbles
+                updateBubbles();
+                
+                // Update and draw fish
+                updateFishes();
+                
+                // Add occasional bubbles
+                if (p.frameCount % 30 === 0 && bubbles.length < maxBubbles) {
+                    createBubble();
+                }
+                
+                // Add fish gradually
+                if (p.frameCount % 120 === 0 && fishes.length < maxFishes) {
+                    createFish(p.random(p.width), p.random(p.height), p.floor(p.random(3)));
+                }
+            };
+            
+            function updateBackground() {
+                // Draw gradient background
+                let colors = isDay ? dayColors : nightColors;
+                bgGradient = p.drawingContext.createLinearGradient(0, 0, 0, p.height);
+                bgGradient.addColorStop(0, colors.waterTop.toString());
+                bgGradient.addColorStop(1, colors.waterBottom.toString());
+                
+                p.drawingContext.fillStyle = bgGradient;
+                p.drawingContext.fillRect(0, 0, p.width, p.height);
+                
+                // Add subtle light rays during day
+                if (isDay) {
+                    p.push();
+                    p.blendMode(p.SCREEN);
+                    for (let i = 0; i < 5; i++) {
+                        let x = p.width * (i / 5) + p.sin(p.frameCount * 0.001 + i) * 50;
+                        let w = p.width * 0.02;
+                        let h = p.height;
+                        p.fill(200, 30, 100, 0.02);
+                        p.noStroke();
+                        p.triangle(
+                            x - w, 0,
+                            x + w, 0,
+                            x + p.random(-w, w), h
+                        );
+                    }
+                    p.pop();
+                }
+            }
+            
+            function drawWaterSurface() {
+                waterSurface.clear();
+                waterSurface.push();
+                waterSurface.blendMode(p.OVERLAY);
+                
+                // Create caustic light patterns
+                for (let y = 0; y < 20; y++) {
+                    let waveY = y * 20 + p.sin(p.frameCount * 0.02 + y) * 10;
+                    let alpha = p.map(y, 0, 20, 10, 2);
+                    
+                    waterSurface.stroke(255, alpha);
+                    waterSurface.noFill();
+                    waterSurface.beginShape();
+                    
+                    for (let x = 0; x <= p.width; x += 20) {
+                        let waveX = x + p.noise(x * 0.01, y * 0.1, p.frameCount * 0.005) * 40 - 20;
+                        waterSurface.vertex(waveX, waveY);
+                    }
+                    
+                    waterSurface.endShape();
+                }
+                
+                waterSurface.pop();
+                p.image(waterSurface, 0, 0);
+            }
+            
+            function createFish(x, y, type) {
+                let colors = isDay ? dayColors.fishColors : nightColors.fishColors;
+                let fishColor = colors[p.floor(p.random(colors.length))];
+                
+                fishes.push({
+                    pos: p.createVector(x, y),
+                    vel: p.createVector(p.random(-1, 1), p.random(-0.5, 0.5)),
+                    acc: p.createVector(),
+                    size: p.random(15, 40),
+                    type: type,
+                    color: fishColor,
+                    wiggleOffset: p.random(1000),
+                    wiggleSpeed: p.random(0.02, 0.05),
+                    maxSpeed: p.random(1, 3),
+                    fleeDistance: p.random(50, 150),
+                    followDistance: p.random(100, 200),
+                    energy: p.random(0.5, 1),
+                    target: null,
+                    targetTimer: 0
+                });
+            }
+            
+            function updateFishes() {
+                for (let fish of fishes) {
+                    // Apply natural movement based on fish type
+                    switch (fish.type) {
+                        case 0: // Lazy floaters
+                            fish.acc.mult(0);
+                            fish.vel.mult(0.98);
+                            break;
+                        case 1: // Curious followers
+                            if (p.mouseX > 0 && p.mouseX < p.width && p.mouseY > 0 && p.mouseY < p.height) {
+                                let mouseDist = p.dist(fish.pos.x, fish.pos.y, p.mouseX, p.mouseY);
+                                if (mouseDist < fish.followDistance) {
+                                    let dir = p.createVector(p.mouseX - fish.pos.x, p.mouseY - fish.pos.y);
+                                    dir.normalize().mult(0.1);
+                                    fish.acc.add(dir);
+                                }
+                            }
+                            break;
+                        case 2: // Shy darters
+                            if (p.mouseX > 0 && p.mouseX < p.width && p.mouseY > 0 && p.mouseY < p.height) {
+                                let mouseDist = p.dist(fish.pos.x, fish.pos.y, p.mouseX, p.mouseY);
+                                if (mouseDist < fish.fleeDistance) {
+                                    let dir = p.createVector(fish.pos.x - p.mouseX, fish.pos.y - p.mouseY);
+                                    dir.normalize().mult(0.2);
+                                    fish.acc.add(dir);
+                                }
+                            }
+                            break;
+                    }
+                    
+                    // Random wandering behavior
+                    if (p.random() < 0.02) {
+                        fish.acc.add(p.createVector(p.random(-0.5, 0.5), p.random(-0.5, 0.5)));
+                    }
+                    
+                    // Target behavior (occasionally pick a point to swim to)
+                    if (fish.targetTimer <= 0) {
+                        fish.target = p.createVector(
+                            p.random(fish.size, p.width - fish.size),
+                            p.random(fish.size, p.height - fish.size)
+                        );
+                        fish.targetTimer = p.random(60, 180);
+                    } else {
+                        fish.targetTimer--;
+                        if (fish.target) {
+                            let targetDist = p.dist(fish.pos.x, fish.pos.y, fish.target.x, fish.target.y);
+                            if (targetDist > fish.size * 2) {
+                                let dir = p.createVector(fish.target.x - fish.pos.x, fish.target.y - fish.pos.y);
+                                dir.normalize().mult(0.05);
+                                fish.acc.add(dir);
+                            }
+                        }
+                    }
+                    
+                    // Apply physics
+                    fish.vel.add(fish.acc);
+                    fish.vel.limit(fish.maxSpeed * fish.energy);
+                    fish.pos.add(fish.vel);
+                    fish.acc.mult(0);
+                    
+                    // Boundary checking with gentle turn
+                    if (fish.pos.x < fish.size) {
+                        fish.pos.x = fish.size;
+                        fish.vel.x *= -0.5;
+                    } else if (fish.pos.x > p.width - fish.size) {
+                        fish.pos.x = p.width - fish.size;
+                        fish.vel.x *= -0.5;
+                    }
+                    
+                    if (fish.pos.y < fish.size) {
+                        fish.pos.y = fish.size;
+                        fish.vel.y *= -0.5;
+                    } else if (fish.pos.y > p.height - fish.size) {
+                        fish.pos.y = p.height - fish.size;
+                        fish.vel.y *= -0.5;
+                    }
+                    
+                    // Draw fish
+                    drawFish(fish);
+                }
+            }
+            
+            function drawFish(fish) {
+                p.push();
+                p.translate(fish.pos.x, fish.pos.y);
+                
+                // Calculate angle based on velocity
+                let angle = p.atan2(fish.vel.y, fish.vel.x);
+                p.rotate(angle);
+                
+                // Body wiggle
+                let wiggle = p.sin(p.frameCount * fish.wiggleSpeed + fish.wiggleOffset) * 0.2;
+                
+                // Draw fish body
+                p.fill(fish.color);
+                p.noStroke();
+                
+                // Fish body
+                p.beginShape();
+                p.vertex(fish.size * 0.5, 0);
+                p.bezierVertex(
+                    fish.size * 0.3, -fish.size * 0.3,
+                    -fish.size * 0.5, -fish.size * 0.2 + wiggle * fish.size,
+                    -fish.size * 0.8, 0
+                );
+                p.bezierVertex(
+                    -fish.size * 0.5, fish.size * 0.2 + wiggle * fish.size,
+                    fish.size * 0.3, fish.size * 0.3,
+                    fish.size * 0.5, 0
+                );
+                p.endShape(p.CLOSE);
+                
+                // Fish tail
+                p.beginShape();
+                p.vertex(-fish.size * 0.8, 0);
+                p.vertex(-fish.size, -fish.size * 0.4);
+                p.vertex(-fish.size * 1.2, 0);
+                p.vertex(-fish.size, fish.size * 0.4);
+                p.endShape(p.CLOSE);
+                
+                // Fish eye
+                p.fill(0);
+                p.ellipse(fish.size * 0.3, -fish.size * 0.1, fish.size * 0.1);
+                
+                // Fish details
+                p.stroke(0, 30);
+                p.noFill();
+                p.line(fish.size * 0.1, -fish.size * 0.15, fish.size * 0.2, -fish.size * 0.2);
+                p.line(fish.size * 0.1, fish.size * 0.15, fish.size * 0.2, fish.size * 0.2);
+                
+                p.pop();
+            }
+            
+            function createBubble() {
+                bubbles.push({
+                    x: p.random(p.width),
+                    y: p.height + p.random(10),
+                    size: p.random(5, 15),
+                    speed: p.random(1, 3),
+                    wobble: p.random(1000),
+                    wobbleAmount: p.random(2, 5),
+                    alpha: p.random(50, 150)
+                });
+            }
+            
+            function updateBubbles() {
+                for (let i = bubbles.length - 1; i >= 0; i--) {
+                    let bubble = bubbles[i];
+                    
+                    // Move bubble upward
+                    bubble.y -= bubble.speed;
+                    
+                    // Side-to-side wobble
+                    bubble.x += p.sin(p.frameCount * 0.05 + bubble.wobble) * 0.2;
+                    
+                    // Remove if off screen
+                    if (bubble.y < -bubble.size) {
+                        bubbles.splice(i, 1);
+                        continue;
+                    }
+                    
+                    // Draw bubble
+                    p.push();
+                    p.noStroke();
+                    p.fill(255, bubble.alpha);
+                    p.ellipse(bubble.x, bubble.y, bubble.size);
+                    
+                    // Bubble highlight
+                    p.fill(255, bubble.alpha * 1.5);
+                    p.ellipse(
+                        bubble.x - bubble.size * 0.3,
+                        bubble.y - bubble.size * 0.3,
+                        bubble.size * 0.4
+                    );
+                    p.pop();
+                }
+            }
+            
+            p.mousePressed = function() {
+                // Debounce clicks
+                let now = p.millis();
+                if (now - lastClickTime < 300) return;
+                lastClickTime = now;
+                
+                // Toggle day/night
+                isDay = !isDay;
+                
+                // Update fish colors
+                let colors = isDay ? dayColors.fishColors : nightColors.fishColors;
+                for (let fish of fishes) {
+                    fish.color = colors[p.floor(p.random(colors.length))];
+                }
+                
+                // Add bubbles where clicked
+                for (let i = 0; i < 10; i++) {
+                    bubbles.push({
+                        x: p.mouseX + p.random(-20, 20),
+                        y: p.mouseY + p.random(-20, 20),
+                        size: p.random(5, 15),
+                        speed: p.random(2, 4),
+                        wobble: p.random(1000),
+                        wobbleAmount: p.random(2, 5),
+                        alpha: p.random(100, 200)
+                    });
+                }
+            };
+            
+            p.windowResized = function() {
+                p.resizeCanvas(p.windowWidth * 0.9, p.windowHeight * 0.9);
+                waterSurface = p.createGraphics(p.width, p.height);
+            };
+        };
+        
+        new p5(sketch);
+    </script>
+
+              
+          
+                
+          
+              
+</body></html>
